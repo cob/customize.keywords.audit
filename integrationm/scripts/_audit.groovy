@@ -51,7 +51,7 @@ def getAuditFields(definitionName) {
     def fields = [:]
     (0..fieldsSize-1).each { index ->
         def fieldDefinition  = definition.fieldDefinitions.getJSONObject(index)
-        def fieldDescription = fieldDefinition.getString("description")
+        def fieldDescription = fieldDefinition.optString("description")
         if(fieldDescription){
             def fieldDefId       = fieldDefinition.get("id");
             def fieldName        = fieldDefinition.get("name");
