@@ -15,8 +15,11 @@ if (msg.product == "recordm-definition") cacheOfAuditFieldsForDefinition.invalid
 // ========================================================================================================
 def auditFields = cacheOfAuditFieldsForDefinition.get(msg.type, { getAuditFields(msg.type) })
 if (msg.user != "integrationm" && auditFields.size() > 0 && msg.product == "recordm" && msg.action =~ "add|update") {
-    if (auditFields.any { f -> msg.field(f.name).changed() }) {
-        recordm.update(msg.type, msg.instance.id, getAuditFieldsUpdates(auditFields, msg.instance.fields));
+    if (msg.instance.fields.any { f -> msg.field(f.fieldDefinition.name).changed() }) {
+        def updatedFields = getAuditFieldsUpdates(auditFields, msg.instance.fields)
+        log.info("[_\$audit] Updating audit fields for instance ${msg.instance.id} updatedFields=${updatedFields}")
+
+        recordm.update(msg.type, msg.instance.id, updatedFields);
     }
 }
 
