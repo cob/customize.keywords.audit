@@ -14,8 +14,8 @@ if (msg.product == "recordm-definition") cacheOfAuditFieldsForDefinition.invalid
 
 // ========================================================================================================
 def auditFields = cacheOfAuditFieldsForDefinition.get(msg.type, { getAuditFields(msg.type) })
-if (auditFields.size() > 0 && msg.product == "recordm" && msg.action =~ "add|update") {
-    if (msg.user != "integrationm" || auditFields.any { f -> msg.field(f.name).changed() }) {
+if (msg.user != "integrationm" && auditFields.size() > 0 && msg.product == "recordm" && msg.action =~ "add|update") {
+    if (auditFields.any { f -> msg.field(f.name).changed() }) {
         recordm.update(msg.type, msg.instance.id, getAuditFieldsUpdates(auditFields, msg.instance.fields));
     }
 }
@@ -31,7 +31,7 @@ def getAuditFieldsUpdates(auditFields,instanceFields) {
 
         } else if( auditField.args == "username") {
             updates << [(auditField.name) : msg.user]
-            
+
         } else if( auditField.args == "time") {
             if(msg.action == 'add' && Math.abs(msg.value(auditField.name, Long.class)?:0 - msg._timestamp_) < 30000) return // Ignore changes less then 30s
             updates << [(auditField.name) : "" + msg._timestamp_]
@@ -61,7 +61,7 @@ def getAuditFields(definitionName) {
 
     // Finalmente obtém a lista de campos que é necessário calcular
     def auditFields = [];
-    fields.each { fieldId,field -> 
+    fields.each { fieldId,field ->
         def matcher = field.description =~ /[$]audit\.(creator|updater)\.(username|uri|time)/
         if(matcher) {
             def op = matcher[0][1]
