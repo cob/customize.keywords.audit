@@ -1,1 +1,1 @@
-import("./cob/_audit.js");
+import "./cob/_audit.js";
