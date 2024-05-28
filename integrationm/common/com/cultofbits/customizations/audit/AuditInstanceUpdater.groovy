@@ -55,7 +55,6 @@ class AuditInstanceUpdater {
         def regex = /[$]audit\.(creator|updater)\.(username|uri|time)/
         def auditFields = [];
         for (FieldDefinition fd in definition.fieldDefinitions) {
-            System.out.println(".. " + msg.field(fd.name).changed() + " --- "+ fd.name );
             if (msg.field(fd.name).changed() && !fd.configuration.keys.containsKey("AutoRefField")) {
                 nonRefFieldChanged = true
                 break
@@ -64,7 +63,18 @@ class AuditInstanceUpdater {
         for (FieldDefinition fd in definition.fieldDefinitions) {
             def matcher = fd =~ regex
             if (matcher) {
-                if (msg.action == 'update' && !nonRefFieldChanged && ignoreRefsChanges(fd.configuration.extensions)) continue
+
+                if (msg.action == 'update'){
+                    LinkedHashMap<String, String> args = auditArguments(fd.configuration.extensions)
+                    String fieldName = args.get("")
+                    if (
+                            ( fieldName != null
+                            && (!msg.field(fd.name).changed() || ignoreRefsChanges(args))
+                            )
+                            || !nonRefFieldChanged && ignoreRefsChanges(args)
+                        ) continue
+                }
+
                 def op = matcher[0][1]
                 def arg = matcher[0][2]
                 auditFields << [fieldId: fd.id, name: fd.name, op: op, args: arg]
@@ -106,33 +116,36 @@ class AuditInstanceUpdater {
         return updates
     }
 
-    /**
-     * @return true if the JSONObject extraKeywords has an audit description with an argument of ignoreRefs:true
-     * Example: $audit.updater.time(ignoreRefs:true)
-     */
-    def private static ignoreRefsChanges(Map extraKeywords) {
+    private static LinkedHashMap<String,String> auditArguments(Map extraKeywords){
+        def arguments = [:]
         def rgx = /[$]audit\.(creator|updater)\.(username|uri|time)/
-
         for (def key in extraKeywords.keySet()) {
             if (key =~ rgx) {
                 JSONObject jsonObj = new JSONObject(extraKeywords.get(key))
                 if (jsonObj.has("args")) {
                     def args = jsonObj.getJSONArray("args")
                     if (args.length() > 0) {
-                        return toMapArgs(args.optString(0))["ignoreRefs"] == "true"
+                        arguments = toMapArgs(args.optString(0))
                     }
                 }
-                return false
+                break
             }
         }
-        return false
+        return arguments
+    }
+    /**
+     * @return true if the JSONObject extraKeywords has an audit description with an argument of ignoreRefs:true
+     * Example: $audit.updater.time(ignoreRefs:true)
+     */
+    private static ignoreRefsChanges(LinkedHashMap<String,String> auditArgs) {
+        return auditArgs["ignoreRefs"] == "true"
     }
 
     /**
      * @stringArgs a string with the options of audit. Eg.:"[ignoreRefs:true,a:1]"
      * @return a map containing the elements in the string
      * */
-    def private static toMapArgs(stringArgs) {
+    def private static LinkedHashMap<String,String> toMapArgs(stringArgs) {
         if (stringArgs == null) {
             return [:]
         }
