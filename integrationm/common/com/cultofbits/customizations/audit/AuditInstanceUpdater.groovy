@@ -2,6 +2,7 @@ package com.cultofbits.customizations.audit
 
 import com.cultofbits.integrationm.service.actionpack.RecordmActionPack
 import com.cultofbits.integrationm.service.actionpack.UsermActionPack
+import com.cultofbits.integrationm.service.dictionary.userm.User
 import com.google.common.cache.Cache
 import com.cultofbits.integrationm.service.dictionary.recordm.Definition
 import com.cultofbits.integrationm.service.dictionary.recordm.FieldDefinition
@@ -103,7 +104,7 @@ class AuditInstanceUpdater {
             }
 
             if (auditField.args == "uri") {
-                updates << [(auditField.name): usermActionPack.getUser(msg.user).data._links.self]
+                updates << [(auditField.name): usermActionPack.getUser(msg.user).getBody(User.class)._links.self]
             } else if (auditField.args == "username") {
                 updates << [(auditField.name): msg.user]
             } else if (auditField.args == "time") {
