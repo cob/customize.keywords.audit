@@ -2,6 +2,7 @@ package com.cultofbits.customizations.audit
 
 import com.cultofbits.integrationm.service.actionpack.RecordmActionPack
 import com.cultofbits.integrationm.service.actionpack.UsermActionPack
+import com.cultofbits.integrationm.service.dictionary.userm.User
 import com.google.common.cache.Cache
 import com.cultofbits.integrationm.service.dictionary.recordm.Definition
 import com.cultofbits.integrationm.service.dictionary.recordm.FieldDefinition
@@ -55,7 +56,6 @@ class AuditInstanceUpdater {
         def regex = /[$]audit\.(creator|updater)\.(username|uri|time)/
         def auditFields = [];
         for (FieldDefinition fd in definition.fieldDefinitions) {
-            System.out.println(".. " + msg.field(fd.name).changed() + " --- "+ fd.name );
             if (msg.field(fd.name).changed() && !fd.configuration.keys.containsKey("AutoRefField")) {
                 nonRefFieldChanged = true
                 break
@@ -93,13 +93,13 @@ class AuditInstanceUpdater {
             }
 
             if (auditField.args == "uri") {
-                updates << [(auditField.name): usermActionPack.getUser(msg.user).data._links.self]
+                updates[auditField.name] = usermActionPack.getUser(msg.user).getBody()._links.self
             } else if (auditField.args == "username") {
-                updates << [(auditField.name): msg.user]
+                updates[auditField.name] = msg.user
             } else if (auditField.args == "time") {
                 if (msg.action == 'add' && msg.value(auditField.name, Long.class) ?: msg.getTimestamp() < 30000) return
                 // Ignore changes less then 30s
-                updates << [(auditField.name): "" + msg.getTimestamp()]
+                updates[auditField.name] = msg.getTimestamp().toString()
             }
         }
 

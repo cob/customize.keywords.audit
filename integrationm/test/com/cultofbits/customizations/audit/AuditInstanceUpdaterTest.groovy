@@ -2,11 +2,13 @@ package com.cultofbits.customizations.audit
 
 import com.cultofbits.customizations.utils.FieldDefinitionBuilder
 import com.cultofbits.integrationm.service.actionpack.RecordmActionPack
+import com.cultofbits.integrationm.service.actionpack.UsermActionPack
 import com.cultofbits.integrationm.service.dictionary.ReusableResponse
 import com.cultofbits.customizations.utils.RecordmMsgBuilder
 import com.cultofbits.integrationm.service.dictionary.recordm.Definition
 import com.cultofbits.integrationm.service.dictionary.recordm.FieldDefinition
 import com.cultofbits.integrationm.service.dictionary.recordm.RecordmMsg
+import com.cultofbits.integrationm.service.dictionary.userm.User
 import spock.lang.Specification
 
 import static com.cultofbits.customizations.utils.DefinitionBuilder.aDefinition
@@ -172,17 +174,13 @@ class AuditUtilsTest extends Specification {
         def definitionBuilder = getDefinition()
         def definition = definitionBuilder.build()
 
-        def auditFields = [];
+        def auditFields = [
+                [fieldId: 1, name: "field7", op: "updater", args: "time"],
+                [fieldId: 3, name: "field9", op: "updater", args: "username"]
+        ];
 
-        auditFields << [fieldId: 1, name: "field7", op: "updater", args: "time"]
-        auditFields << [fieldId: 3, name: "field9", op: "updater", args: "username"]
+        def newInstanceMsg = mockInstanceMSG()
 
-        def newInstanceMsg = Mock(RecordmMsg.class)
-        newInstanceMsg.getTimestamp() >> System.currentTimeMillis()
-        newInstanceMsg.value("any value") >> null
-        newInstanceMsg.action >> "add"
-        newInstanceMsg.user >> "any user"
-        newInstanceMsg.value("any value", Long.class) >> Long.valueOf(12000000000L)
 
         AuditInstanceUpdater auditInstanceUpdated = new AuditInstanceUpdater(getRecordmActionPack(definitionBuilder.build()), null, null)
 
@@ -190,6 +188,35 @@ class AuditUtilsTest extends Specification {
 
         expect:
         fieldsToUpdate.size() == 2
+    }
+
+    def "getAuditFieldsUpdates uri link"() {
+        def definitionBuilder = getDefinition()
+        def definition = definitionBuilder.build()
+
+        def auditFields = [[fieldId: 1, name: "field7", op: "updater", args: "uri"]];
+
+        def newInstanceMsg =  mockInstanceMSG()
+
+        User user = new User()
+        user.username = newInstanceMsg.user
+        user.name = newInstanceMsg.user
+        def links = new User.UserLinks()
+        links.self = "userm.com"
+        user._links = links
+
+        ReusableResponse<User> reusableResponse = Mock()
+        reusableResponse.getBody() >> user
+        UsermActionPack usermActionPack = Mock(UsermActionPack.class)
+        usermActionPack.getUser(newInstanceMsg.user) >> reusableResponse
+
+        AuditInstanceUpdater auditInstanceUpdated = new AuditInstanceUpdater(getRecordmActionPack(definitionBuilder.build()), usermActionPack, null)
+
+        def fieldsToUpdate = auditInstanceUpdated.getAuditFieldsUpdates(auditFields, newInstanceMsg)
+
+        expect:
+        fieldsToUpdate.size() == 1
+        fieldsToUpdate[auditFields[0].name] == "userm.com"
     }
 
     def "test cache"() {
@@ -242,5 +269,15 @@ class AuditUtilsTest extends Specification {
         cachedDefinition1.version == definition.version
         cachedDefinitionSecond.version == definitionSecond.version
         cachedDefinition1.version != cachedDefinitionSecond.version
+    }
+
+    def mockInstanceMSG(){
+        def newInstanceMsg = Mock(RecordmMsg.class)
+        newInstanceMsg.getTimestamp() >> System.currentTimeMillis()
+        newInstanceMsg.value("any value") >> null
+        newInstanceMsg.action >> "add"
+        newInstanceMsg.user >> "any user"
+        newInstanceMsg.value("any value", Long.class) >> Long.valueOf(12000000000L)
+        return newInstanceMsg
     }
 }
