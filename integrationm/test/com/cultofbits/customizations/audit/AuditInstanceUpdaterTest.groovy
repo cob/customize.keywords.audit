@@ -170,7 +170,7 @@ class AuditUtilsTest extends Specification {
         auditFields.size() == 4
     }
 
-    def "getAuditFieldsUpdates"() {
+    def "getAuditFieldsUpdates update time and username"() {
         def definitionBuilder = getDefinition()
         def definition = definitionBuilder.build()
 
