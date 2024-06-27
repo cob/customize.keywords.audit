@@ -2,11 +2,13 @@ package com.cultofbits.customizations.audit
 
 import com.cultofbits.customizations.utils.FieldDefinitionBuilder
 import com.cultofbits.integrationm.service.actionpack.RecordmActionPack
+import com.cultofbits.integrationm.service.actionpack.UsermActionPack
 import com.cultofbits.integrationm.service.dictionary.ReusableResponse
 import com.cultofbits.customizations.utils.RecordmMsgBuilder
 import com.cultofbits.integrationm.service.dictionary.recordm.Definition
 import com.cultofbits.integrationm.service.dictionary.recordm.FieldDefinition
 import com.cultofbits.integrationm.service.dictionary.recordm.RecordmMsg
+import com.cultofbits.integrationm.service.dictionary.userm.User
 import spock.lang.Specification
 
 import static com.cultofbits.customizations.utils.DefinitionBuilder.aDefinition
@@ -52,9 +54,8 @@ class AuditUtilsTest extends Specification {
         def newInstanceMsg = RecordmMsgBuilder.aMessage("cob-admin", definition, "add")
                 .build()
 
-        AuditInstanceUpdater auditInstanceUpdated = new AuditInstanceUpdater(getRecordmActionPack(definition), null, null)
-
-        def auditFields = auditInstanceUpdated.getAuditFields(newInstanceMsg)
+        def auditFields = new AuditInstanceUpdater(getRecordmActionPack(definition), null, null)
+                .getAuditFields(newInstanceMsg)
 
         expect:
         auditFields.size() == 2
@@ -67,12 +68,12 @@ class AuditUtilsTest extends Specification {
         def definition = getDefinition().build()
 
         //audit without arguments
-        def newInstanceMsg = RecordmMsgBuilder.aMessage("cob-admin", definition, "update").newField(definition.getFirstField("Text"), "text")
+        def msg = RecordmMsgBuilder.aMessage("cob-admin", definition, "update")
+                .newField(definition.getFirstField("Text"), "text")
                 .build()
 
-        AuditInstanceUpdater auditInstanceUpdated = new AuditInstanceUpdater(getRecordmActionPack(definition), null, null)
-
-        def auditFields = auditInstanceUpdated.getAuditFields(newInstanceMsg)
+        def auditFields = new AuditInstanceUpdater(getRecordmActionPack(definition), null, null)
+                .getAuditFields(msg)
 
         expect:
         auditFields.size() == 2
@@ -168,35 +169,72 @@ class AuditUtilsTest extends Specification {
         auditFields.size() == 4
     }
 
-    def "getAuditFieldsUpdates"() {
-        def definitionBuilder = getDefinition()
-        def definition = definitionBuilder.build()
+    def "audit fields with \$audit.updater.username and \$audit.updater.time when a message is an update"() {
 
-        def auditFields = [];
+        def definition = getDefinition().build() //TimeCreation
+        definition.getFirstField("Creator").description = "\$audit.updater.username" // redefining the $audit keyword
+        definition.getFirstField("TimeCreation").description = "\$audit.updater.time" // redefining the $audit keyword
 
-        auditFields << [fieldId: 1, name: "field7", op: "updater", args: "time"]
-        auditFields << [fieldId: 3, name: "field9", op: "updater", args: "username"]
+        def msg = RecordmMsgBuilder.aMessage("any_user", definition, "update", System.currentTimeMillis()).build()
 
-        def newInstanceMsg = Mock(RecordmMsg.class)
-        newInstanceMsg.getTimestamp() >> System.currentTimeMillis()
-        newInstanceMsg.value("any value") >> null
-        newInstanceMsg.action >> "add"
-        newInstanceMsg.user >> "any user"
-        newInstanceMsg.value("any value", Long.class) >> Long.valueOf(12000000000L)
+        User user = new User()
+        user.username = msg.user
+        user._links = new User.UserLinks()
+        user._links.self = "/userm/user/1"
 
-        AuditInstanceUpdater auditInstanceUpdated = new AuditInstanceUpdater(getRecordmActionPack(definitionBuilder.build()), null, null)
-
-        def fieldsToUpdate = auditInstanceUpdated.getAuditFieldsUpdates(auditFields, newInstanceMsg)
+        AuditInstanceUpdater auditInstanceUpdater = new AuditInstanceUpdater(getRecordmActionPack(definition), getUsermActionPack(user), null)
+        def auditFields = auditInstanceUpdater.getAuditFields(msg)
+        def fieldsToUpdate = auditInstanceUpdater.getAuditFieldsUpdates(auditFields, msg)
 
         expect:
-        fieldsToUpdate.size() == 2
+        fieldsToUpdate["Creator"] == user.username
+        Long.parseLong(fieldsToUpdate["TimeCreation"]) < System.currentTimeMillis()
     }
+
+    def "don't audit a field with \$audit.creator.time when a message is an add, and message timestamp is lower than 30000 (30 seconds)"() {
+
+        def definition = getDefinition().build() //TimeCreation
+        definition.getFirstField("TimeCreation").description = "\$audit.creator.time" // redefining the $audit keyword
+
+        def msg = RecordmMsgBuilder.aMessage("any_user", definition, "add", 20000L).build()
+
+        User user = new User()
+        user.username = msg.user
+        user._links = new User.UserLinks()
+        user._links.self = "/userm/user/1"
+
+        AuditInstanceUpdater auditInstanceUpdater = new AuditInstanceUpdater(getRecordmActionPack(definition), getUsermActionPack(user), null)
+        def auditFields = auditInstanceUpdater.getAuditFields(msg)
+        def fieldsToUpdate = auditInstanceUpdater.getAuditFieldsUpdates(auditFields, msg)
+
+        expect:
+        fieldsToUpdate["TimeCreation"] == null
+    }
+
+    def "audit the field using \$audit.creator.uri set the URI link of the user who triggered the message."() {
+        def definition = getDefinition().build()
+        definition.getFirstField("Creator").description = "\$audit.creator.uri" // redefining the $audit keyword
+
+        def msg = RecordmMsgBuilder.aMessage("any user", definition, "add", System.currentTimeMillis()).build()
+
+        User user = new User()
+        user.username = msg.user
+        user._links = new User.UserLinks()
+        user._links.self = "/userm/user/1"
+
+        AuditInstanceUpdater auditInstanceUpdater = new AuditInstanceUpdater(getRecordmActionPack(definition), getUsermActionPack(user), null)
+        def auditFields = auditInstanceUpdater.getAuditFields(msg)
+        def fieldsToUpdate = auditInstanceUpdater.getAuditFieldsUpdates(auditFields, msg)
+
+        expect:
+        fieldsToUpdate["Creator"] == user._links.self
+    }
+
 
     def "test cache"() {
         def cache = AuditInstanceUpdater.getCache()
 
         def definition = getDefinition().build()
-
         def cachedDefinition1 = getCachedDefinitionAux(definition)
 
         expect:
@@ -204,7 +242,8 @@ class AuditUtilsTest extends Specification {
         cache.size() == 1
         cachedDefinition1.hashCode() == definition.hashCode()
     }
-    RecordmActionPack getRecordmActionPack(definition){
+
+    RecordmActionPack getRecordmActionPack(definition) {
         def reusableResponse = Stub(ReusableResponse.class)
         reusableResponse.getBody() >> definition
 
@@ -213,23 +252,31 @@ class AuditUtilsTest extends Specification {
 
         return rmActionPack
     }
+
+    UsermActionPack getUsermActionPack(User user) {
+        ReusableResponse<User> reusableResponse = Mock()
+        reusableResponse.getBody() >> user
+
+        UsermActionPack usermActionPack = Mock(UsermActionPack.class)
+        usermActionPack.getUser(user.username) >> reusableResponse
+
+        return usermActionPack
+    }
+
     def getCachedDefinitionAux(Definition definition) {
 
-        def rmActionPack = getRecordmActionPack(definition)
-
-        def newInstanceMsg = RecordmMsgBuilder.aMessage("cob-admin", definition, "update").newField(definition.getFirstField("Text"), "text")
+        def newInstanceMsg = RecordmMsgBuilder.aMessage("cob-admin", definition, "update")
+                .newField(definition.getFirstField("Text"), "text")
                 .build()
 
-        AuditInstanceUpdater auditInstanceUpdated = new AuditInstanceUpdater(getRecordmActionPack(definition), null, null)
-
-        return auditInstanceUpdated.getDefinitionFromCache(newInstanceMsg)
+        return new AuditInstanceUpdater(getRecordmActionPack(definition), null, null)
+                .getDefinitionFromCache(newInstanceMsg)
     }
 
     def "test cache different definition version"() {
         def cache = AuditInstanceUpdater.getCache()
 
         def definition = getDefinition().build()
-
         def cachedDefinition1 = getCachedDefinitionAux(definition)
 
         // second definition
@@ -237,10 +284,13 @@ class AuditUtilsTest extends Specification {
         definitionSecond.version = 14
 
         def cachedDefinitionSecond = getCachedDefinitionAux(definitionSecond)
+
         expect:
         cache.size() == 1
         cachedDefinition1.version == definition.version
         cachedDefinitionSecond.version == definitionSecond.version
         cachedDefinition1.version != cachedDefinitionSecond.version
     }
+
+
 }
