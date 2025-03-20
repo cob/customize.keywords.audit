@@ -35,7 +35,7 @@ class AuditUtilsTest extends Specification {
         return definition
     }
 
-    def FieldDefinition buildFieldDefinition(int fieldId, String fieldName, String fieldDescription, String fieldConfigurationKey, String fieldConfiguration) {
+    FieldDefinition buildFieldDefinition(int fieldId, String fieldName, String fieldDescription, String fieldConfigurationKey, String fieldConfiguration) {
         FieldDefinitionBuilder builder = aFieldDefinition()
                 .id(fieldId)
                 .name(fieldName)
