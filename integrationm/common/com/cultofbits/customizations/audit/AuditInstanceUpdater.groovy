@@ -2,47 +2,35 @@ package com.cultofbits.customizations.audit
 
 import com.cultofbits.integrationm.service.actionpack.RecordmActionPack
 import com.cultofbits.integrationm.service.actionpack.UsermActionPack
-import com.cultofbits.integrationm.service.dictionary.userm.User
-import com.google.common.cache.Cache
 import com.cultofbits.integrationm.service.dictionary.recordm.Definition
 import com.cultofbits.integrationm.service.dictionary.recordm.FieldDefinition
 import com.cultofbits.integrationm.service.dictionary.recordm.RecordmMsg
+import com.google.common.cache.Cache
 import com.google.common.cache.CacheBuilder
 import org.json.JSONObject
 
 class AuditInstanceUpdater {
 
-    private static Cache<String, Definition> globalCache;
-
-    protected static Cache<String, Definition> getCache(){
-        if (globalCache == null){
-            globalCache = CacheBuilder.newBuilder()
-                    .maximumSize(100)
-                    .build()
-        }
-        return globalCache
-    }
-
-
+    private static Cache<String, Definition> AUDIT_CACHE = CacheBuilder.newBuilder()
+            .maximumSize(100)
+            .build();
 
     private final RecordmActionPack recordmActionPack
     private final UsermActionPack usermActionPack
-    private final Cache<String, Definition> cacheOfAuditFieldsForDefinition
     private final Object log
 
     AuditInstanceUpdater(RecordmActionPack recordmActionPack, UsermActionPack usermActionPack, log) {
-        cacheOfAuditFieldsForDefinition = getCache()
         this.recordmActionPack = recordmActionPack
         this.usermActionPack = usermActionPack
         this.log = log
     }
 
     Definition getDefinitionFromCache(RecordmMsg msg) {
-        Definition definition = cacheOfAuditFieldsForDefinition.get(msg.type, { recordmActionPack.getDefinition(msg.getDefinitionName()).getBody() })
+        Definition definition = AUDIT_CACHE.get(msg.type, { recordmActionPack.getDefinition(msg.getDefinitionName()).getBody() })
 
         if (definition.getVersion() != msg.getDefinitionVersion()) {
-            cacheOfAuditFieldsForDefinition.invalidate(msg.type)
-            definition = cacheOfAuditFieldsForDefinition.get(msg.type, { recordmActionPack.getDefinition(msg.getDefinitionName()).getBody() })
+            AUDIT_CACHE.invalidate(msg.type)
+            definition = AUDIT_CACHE.get(msg.type, { recordmActionPack.getDefinition(msg.getDefinitionName()).getBody() })
         }
 
         return definition
@@ -76,28 +64,31 @@ class AuditInstanceUpdater {
         return auditFields
     }
 
-     /***
+    /***
      *
      * @return a map of the fields that changed. The map is <fieldName,(username|uri|time)>
      * @username: username of the user that changed the value of the field
      * @uri: uri of the user that changed the value of the field
      * @time: time of when the field value was update or changed
      */
-    def LinkedHashMap<String, String> getAuditFieldsUpdates(auditFields, RecordmMsg msg) {
+    LinkedHashMap<String, String> getAuditFieldsUpdates(auditFields, RecordmMsg msg) {
         LinkedHashMap<String, String> updates = [:]
 
         auditFields.each { auditField ->
-            if (auditField.op == "creator" && msg.action == "update" && msg.value(auditField.name) != null) {
+            if (auditField.op == "creator" && msg.action == "update") {
                 // 'creator' fields are only changed in 'update' if the previous value was empty (meaning it was a field that was not visible)
                 return
             }
 
             if (auditField.args == "uri") {
                 updates[auditField.name] = usermActionPack.getUser(msg.user).getBody()._links.self
+
             } else if (auditField.args == "username") {
                 updates[auditField.name] = msg.user
+
             } else if (auditField.args == "time") {
                 if (msg.action == 'add' && msg.value(auditField.name, Long.class) ?: msg.getTimestamp() < 30000) return
+
                 // Ignore changes less then 30s
                 updates[auditField.name] = msg.getTimestamp().toString()
             }
@@ -110,7 +101,7 @@ class AuditInstanceUpdater {
      * @return true if the JSONObject extraKeywords has an audit description with an argument of ignoreRefs:true
      * Example: $audit.updater.time(ignoreRefs:true)
      */
-    def private static ignoreRefsChanges(Map extraKeywords) {
+    private static ignoreRefsChanges(Map extraKeywords) {
         def rgx = /[$]audit\.(creator|updater)\.(username|uri|time)/
 
         for (def key in extraKeywords.keySet()) {
